@@ -19,7 +19,7 @@
 
 1. کلون کردن پروژه:
 ```bash
-git clone https://github.com/yourusername/cat-food-reminder-pwa.git
+git clone https://github.com/Pxrvlz/cat-food-reminder-pwa.git
 cd cat-food-reminder-pwa
 ```
 
