@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ایجاد آیکون‌ها</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            direction: rtl;
+        }
+        canvas {
+            border: 1px solid #ccc;
+            margin: 10px;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 10px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        .instructions {
+            background: #f0f0f0;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>ایجاد آیکون‌های PWA</h1>
+    <div class="instructions">
+        <h2>راهنمای استفاده:</h2>
+        <ol>
+            <li>روی دکمه "ایجاد آیکون 192x192" کلیک کنید</li>
+            <li>روی آیکون راست کلیک کرده و "ذخیره تصویر به عنوان..." را انتخاب کنید</li>
+            <li>فایل را با نام "icon-192.png" ذخیره کنید</li>
+            <li>همین کار را برای آیکون 512x512 تکرار کنید</li>
+        </ol>
+    </div>
+    
+    <div>
+        <h3>آیکون 192x192</h3>
+        <canvas id="icon192" width="192" height="192"></canvas>
+        <br>
+        <button onclick="downloadIcon(192)">دانلود آیکون 192x192</button>
+    </div>
+    
+    <div>
+        <h3>آیکون 512x512</h3>
+        <canvas id="icon512" width="512" height="512"></canvas>
+        <br>
+        <button onclick="downloadIcon(512)">دانلود آیکون 512x512</button>
+    </div>
+
+    <script>
+        function drawIcon(canvas, size) {
+            const ctx = canvas.getContext('2d');
+            
+            // پس‌زمینه
+            const gradient = ctx.createLinearGradient(0, 0, size, size);
+            gradient.addColorStop(0, '#4a90e2');
+            gradient.addColorStop(1, '#7b68ee');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, size, size);
+            
+            // رسم شکل گربه (ساده)
+            ctx.fillStyle = '#ffffff';
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = size / 20;
+            
+            // سر گربه (دایره)
+            const centerX = size / 2;
+            const centerY = size / 2;
+            const headRadius = size * 0.25;
+            
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, headRadius, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // گوش‌ها
+            const earSize = size * 0.15;
+            ctx.beginPath();
+            // گوش چپ
+            ctx.moveTo(centerX - headRadius * 0.6, centerY - headRadius * 0.8);
+            ctx.lineTo(centerX - headRadius * 0.3, centerY - headRadius * 1.3);
+            ctx.lineTo(centerX - headRadius * 0.1, centerY - headRadius * 0.9);
+            ctx.closePath();
+            ctx.fill();
+            
+            // گوش راست
+            ctx.beginPath();
+            ctx.moveTo(centerX + headRadius * 0.6, centerY - headRadius * 0.8);
+            ctx.lineTo(centerX + headRadius * 0.3, centerY - headRadius * 1.3);
+            ctx.lineTo(centerX + headRadius * 0.1, centerY - headRadius * 0.9);
+            ctx.closePath();
+            ctx.fill();
+            
+            // چشم‌ها
+            ctx.fillStyle = '#4a90e2';
+            const eyeSize = size * 0.05;
+            ctx.beginPath();
+            ctx.arc(centerX - headRadius * 0.3, centerY - headRadius * 0.2, eyeSize, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(centerX + headRadius * 0.3, centerY - headRadius * 0.2, eyeSize, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // بینی
+            ctx.fillStyle = '#ffb6c1';
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY);
+            ctx.lineTo(centerX - size * 0.03, centerY + size * 0.05);
+            ctx.lineTo(centerX + size * 0.03, centerY + size * 0.05);
+            ctx.closePath();
+            ctx.fill();
+            
+            // دهان
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = size / 40;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY + size * 0.08, size * 0.08, 0, Math.PI);
+            ctx.stroke();
+        }
+        
+        function downloadIcon(size) {
+            const canvas = document.getElementById(`icon${size}`);
+            const link = document.createElement('a');
+            link.download = `icon-${size}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }
+        
+        // رسم آیکون‌ها هنگام بارگذاری صفحه
+        window.onload = function() {
+            drawIcon(document.getElementById('icon192'), 192);
+            drawIcon(document.getElementById('icon512'), 512);
+        };
+    </script>
+</body>
+</html>
+
