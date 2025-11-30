@@ -310,7 +310,7 @@ class NotificationManager {
         this.notificationIds.set(`${profile.id}-${mealIndex}-daily`, dailyId);
     }
 
-    showNotification(profile, recommendation, mealIndex) {
+    async showNotification(profile, recommendation, mealIndex) {
         const mealTime = recommendation.mealTimes[mealIndex];
         let message = `زمان غذا دادن به ${profile.name}!`;
         
@@ -322,30 +322,46 @@ class NotificationManager {
 
         // تشخیص مسیر پایه برای GitHub Pages
         const basePath = window.location.pathname.replace(/\/[^/]*$/, '') || '';
+        const iconPath = basePath + '/icon-192.png';
+        
         const notificationOptions = {
             body: message,
-            icon: basePath + '/icon-192.png',
-            badge: basePath + '/icon-192.png',
+            icon: iconPath,
+            badge: iconPath,
             tag: `cat-food-${profile.id}-${mealIndex}`,
             requireInteraction: false,
             vibrate: [200, 100, 200],
             data: {
                 profileId: profile.id,
-                mealIndex: mealIndex
+                mealIndex: mealIndex,
+                url: window.location.origin + basePath
             }
         };
 
-        if ('serviceWorker' in navigator && 'Notification' in window) {
-            navigator.serviceWorker.ready.then(registration => {
-                registration.showNotification('یادآور غذای گربه', notificationOptions);
-            }).catch(() => {
-                // Fallback to regular notification if service worker fails
-                if (Notification.permission === 'granted') {
-                    new Notification('یادآور غذای گربه', notificationOptions);
+        // اولویت با Service Worker
+        if ('serviceWorker' in navigator) {
+            try {
+                const registration = await navigator.serviceWorker.ready;
+                if (registration) {
+                    await registration.showNotification('یادآور غذای گربه', notificationOptions);
+                    console.log('Notification sent via Service Worker');
+                    return;
                 }
-            });
-        } else if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification('یادآور غذای گربه', notificationOptions);
+            } catch (error) {
+                console.error('Service Worker notification failed:', error);
+            }
+        }
+
+        // Fallback به Notification API
+        if ('Notification' in window && Notification.permission === 'granted') {
+            try {
+                new Notification('یادآور غذای گربه', notificationOptions);
+                console.log('Notification sent via Notification API');
+            } catch (error) {
+                console.error('Notification API failed:', error);
+            }
+        } else {
+            console.warn('Notification permission not granted');
         }
     }
 
@@ -376,16 +392,31 @@ class App {
         this.notificationManager = new NotificationManager();
         this.currentEditingId = null;
         this.deferredPrompt = null;
+        this.serviceWorkerRegistration = null;
     }
 
     async init() {
+        console.log('🚀 Initializing Cat Food Reminder PWA...');
         await this.db.init();
+        console.log('✅ Database initialized');
         await this.loadSettings();
         await this.loadProfiles();
         this.setupEventListeners();
         this.setupPWA();
         this.updateSchedule();
         setInterval(() => this.updateSchedule(), 60000); // به‌روزرسانی هر دقیقه
+        console.log('✅ App initialized successfully');
+        
+        // نمایش اطلاعات مفید در Console
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.ready.then(registration => {
+                console.log('✅ Service Worker ready:', registration.scope);
+            });
+        }
+        
+        if ('Notification' in window) {
+            console.log('📱 Notification permission:', Notification.permission);
+        }
     }
 
     setupEventListeners() {
@@ -438,33 +469,123 @@ class App {
         });
 
         // نوتیفیکیشن
-        document.getElementById('notificationsEnabled').addEventListener('change', (e) => {
-            this.saveSetting('notificationsEnabled', e.target.checked);
-            if (e.target.checked) {
-                this.scheduleAllNotifications();
-            } else {
-                this.notificationManager.cancelAllNotifications();
-            }
-        });
+        const notificationsCheckbox = document.getElementById('notificationsEnabled');
+        const requestNotificationBtn = document.getElementById('requestNotificationBtn');
+        
+        if (notificationsCheckbox) {
+            notificationsCheckbox.addEventListener('change', async (e) => {
+                if (e.target.checked) {
+                    const granted = await this.notificationManager.requestPermission();
+                    if (granted) {
+                        await this.saveSetting('notificationsEnabled', true);
+                        await this.scheduleAllNotifications();
+                        if (requestNotificationBtn) {
+                            requestNotificationBtn.style.display = 'none';
+                        }
+                    } else {
+                        e.target.checked = false;
+                        alert('دسترسی به نوتیفیکیشن رد شد. لطفاً از تنظیمات مرورگر دسترسی را فعال کنید.');
+                    }
+                } else {
+                    await this.saveSetting('notificationsEnabled', false);
+                    this.notificationManager.cancelAllNotifications();
+                }
+            });
+        }
+
+        if (requestNotificationBtn) {
+            requestNotificationBtn.addEventListener('click', async () => {
+                const granted = await this.notificationManager.requestPermission();
+                if (granted) {
+                    await this.saveSetting('notificationsEnabled', true);
+                    if (notificationsCheckbox) {
+                        notificationsCheckbox.checked = true;
+                    }
+                    await this.scheduleAllNotifications();
+                    requestNotificationBtn.style.display = 'none';
+                    this.updateNotificationStatus('نوتیفیکیشن فعال شد!');
+                } else {
+                    this.updateNotificationStatus('دسترسی به نوتیفیکیشن رد شد. لطفاً از تنظیمات مرورگر دسترسی را فعال کنید.');
+                }
+            });
+        }
+
+        // دکمه تست نوتیفیکیشن
+        const testNotificationBtn = document.getElementById('testNotificationBtn');
+        if (testNotificationBtn) {
+            testNotificationBtn.addEventListener('click', async () => {
+                if (Notification.permission !== 'granted') {
+                    const granted = await this.notificationManager.requestPermission();
+                    if (!granted) {
+                        alert('لطفاً ابتدا دسترسی به نوتیفیکیشن را فعال کنید.');
+                        return;
+                    }
+                }
+
+                // ایجاد یک پروفایل تست موقت
+                const testProfile = {
+                    id: 'test',
+                    name: 'تست',
+                    weight: 4,
+                    age: 24,
+                    activity: 'medium',
+                    foodType: 'dry',
+                    mealTimes: new Date().toTimeString().slice(0, 5)
+                };
+                const testRecommendation = this.calculator.getRecommendation(testProfile);
+                await this.notificationManager.showNotification(testProfile, testRecommendation, 0);
+            });
+        }
     }
 
     setupPWA() {
+        // بررسی اینکه آیا PWA قبلاً نصب شده یا نه
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || 
+                            window.navigator.standalone || 
+                            document.referrer.includes('android-app://');
+        
+        if (isStandalone) {
+            document.getElementById('installBtn').style.display = 'none';
+        }
+
         // نصب PWA
         window.addEventListener('beforeinstallprompt', (e) => {
             e.preventDefault();
             this.deferredPrompt = e;
-            document.getElementById('installBtn').style.display = 'block';
+            const installBtn = document.getElementById('installBtn');
+            if (installBtn) {
+                installBtn.style.display = 'block';
+            }
+            console.log('PWA install prompt available');
         });
 
-        document.getElementById('installBtn').addEventListener('click', async () => {
-            if (this.deferredPrompt) {
-                this.deferredPrompt.prompt();
-                const { outcome } = await this.deferredPrompt.userChoice;
-                if (outcome === 'accepted') {
-                    document.getElementById('installBtn').style.display = 'none';
+        // بررسی بعد از بارگذاری کامل DOM
+        const installBtn = document.getElementById('installBtn');
+        if (installBtn) {
+            installBtn.addEventListener('click', async () => {
+                if (this.deferredPrompt) {
+                    this.deferredPrompt.prompt();
+                    const { outcome } = await this.deferredPrompt.userChoice;
+                    console.log('User choice:', outcome);
+                    if (outcome === 'accepted') {
+                        installBtn.style.display = 'none';
+                        alert('اپلیکیشن با موفقیت نصب شد!');
+                    }
+                    this.deferredPrompt = null;
+                } else {
+                    // اگر prompt در دسترس نیست، راهنمایی نمایش بده
+                    alert('برای نصب اپلیکیشن:\n\nدر Chrome/Edge: روی آیکون نصب در نوار آدرس کلیک کنید\nدر Safari iOS: از منو "افزودن به صفحه اصلی" را انتخاب کنید');
                 }
-                this.deferredPrompt = null;
+            });
+        }
+
+        // بررسی نصب بعد از نصب
+        window.addEventListener('appinstalled', () => {
+            console.log('PWA installed');
+            if (installBtn) {
+                installBtn.style.display = 'none';
             }
+            this.deferredPrompt = null;
         });
 
         // ثبت Service Worker
@@ -473,7 +594,9 @@ class App {
             const swPath = './service-worker.js';
             navigator.serviceWorker.register(swPath)
                 .then(registration => {
-                    console.log('Service Worker registered successfully');
+                    console.log('Service Worker registered successfully', registration.scope);
+                    this.serviceWorkerRegistration = registration;
+                    
                     // بررسی به‌روزرسانی‌ها
                     registration.addEventListener('updatefound', () => {
                         const newWorker = registration.installing;
@@ -484,7 +607,12 @@ class App {
                         });
                     });
                 })
-                .catch(error => console.error('Service Worker registration failed:', error));
+                .catch(error => {
+                    console.error('Service Worker registration failed:', error);
+                    alert('خطا در ثبت Service Worker. لطفاً مطمئن شوید که از HTTPS استفاده می‌کنید.');
+                });
+        } else {
+            console.warn('Service Worker not supported');
         }
     }
 
@@ -752,10 +880,45 @@ class App {
 
     async loadSettings() {
         const notificationsEnabled = await this.db.getSetting('notificationsEnabled');
-        document.getElementById('notificationsEnabled').checked = notificationsEnabled || false;
+        const notificationsCheckbox = document.getElementById('notificationsEnabled');
+        const requestNotificationBtn = document.getElementById('requestNotificationBtn');
         
-        if (notificationsEnabled) {
-            await this.scheduleAllNotifications();
+        if (notificationsCheckbox) {
+            notificationsCheckbox.checked = notificationsEnabled || false;
+        }
+
+        // بررسی وضعیت permission
+        if ('Notification' in window) {
+            if (Notification.permission === 'granted') {
+                if (requestNotificationBtn) {
+                    requestNotificationBtn.style.display = 'none';
+                }
+                if (notificationsEnabled) {
+                    await this.scheduleAllNotifications();
+                }
+            } else if (Notification.permission === 'denied') {
+                if (notificationsCheckbox) {
+                    notificationsCheckbox.disabled = true;
+                }
+                if (requestNotificationBtn) {
+                    requestNotificationBtn.style.display = 'none';
+                    requestNotificationBtn.textContent = 'دسترسی به نوتیفیکیشن مسدود شده است';
+                    requestNotificationBtn.disabled = true;
+                }
+            } else {
+                // default - permission not requested yet
+                if (requestNotificationBtn) {
+                    requestNotificationBtn.style.display = 'block';
+                }
+            }
+        } else {
+            if (requestNotificationBtn) {
+                requestNotificationBtn.style.display = 'none';
+            }
+            if (notificationsCheckbox) {
+                notificationsCheckbox.disabled = true;
+            }
+            console.warn('Notifications not supported in this browser');
         }
     }
 
@@ -764,9 +927,23 @@ class App {
     }
 
     async scheduleAllNotifications() {
+        if (Notification.permission !== 'granted') {
+            console.warn('Notification permission not granted');
+            return;
+        }
         const profiles = await this.db.getAllProfiles();
         for (const profile of profiles) {
             await this.notificationManager.scheduleNotifications(profile);
+        }
+    }
+
+    updateNotificationStatus(message) {
+        const statusEl = document.getElementById('notificationStatus');
+        if (statusEl) {
+            statusEl.textContent = message;
+            setTimeout(() => {
+                statusEl.textContent = '';
+            }, 5000);
         }
     }
 
