@@ -322,7 +322,8 @@ class NotificationManager {
 
         // تشخیص مسیر پایه برای GitHub Pages
         const basePath = window.location.pathname.replace(/\/[^/]*$/, '') || '';
-        const iconPath = basePath + '/icon-192.png';
+        // استفاده از مسیر نسبی برای آیکون
+        const iconPath = basePath ? basePath + '/icon-192.png' : './icon-192.png';
         
         const notificationOptions = {
             body: message,
@@ -338,30 +339,48 @@ class NotificationManager {
             }
         };
 
+        console.log('📤 Attempting to show notification:', {
+            profile: profile.name,
+            message: message,
+            icon: iconPath,
+            permission: Notification.permission
+        });
+
         // اولویت با Service Worker
         if ('serviceWorker' in navigator) {
             try {
                 const registration = await navigator.serviceWorker.ready;
                 if (registration) {
+                    console.log('📱 Using Service Worker for notification');
                     await registration.showNotification('یادآور غذای گربه', notificationOptions);
-                    console.log('Notification sent via Service Worker');
+                    console.log('✅ Notification sent via Service Worker');
                     return;
                 }
             } catch (error) {
-                console.error('Service Worker notification failed:', error);
+                console.error('❌ Service Worker notification failed:', error);
+                // ادامه به fallback
             }
         }
 
         // Fallback به Notification API
-        if ('Notification' in window && Notification.permission === 'granted') {
-            try {
-                new Notification('یادآور غذای گربه', notificationOptions);
-                console.log('Notification sent via Notification API');
-            } catch (error) {
-                console.error('Notification API failed:', error);
+        if ('Notification' in window) {
+            if (Notification.permission === 'granted') {
+                try {
+                    console.log('📱 Using Notification API (fallback)');
+                    const notification = new Notification('یادآور غذای گربه', notificationOptions);
+                    console.log('✅ Notification sent via Notification API');
+                    return;
+                } catch (error) {
+                    console.error('❌ Notification API failed:', error);
+                    throw error;
+                }
+            } else {
+                console.warn('⚠️ Notification permission not granted:', Notification.permission);
+                throw new Error('Notification permission is not granted');
             }
         } else {
-            console.warn('Notification permission not granted');
+            console.error('❌ Notifications not supported in this browser');
+            throw new Error('Notifications not supported');
         }
     }
 
@@ -510,30 +529,22 @@ class App {
             });
         }
 
-        // دکمه تست نوتیفیکیشن
+        // دکمه تست نوتیفیکیشن فوری
         const testNotificationBtn = document.getElementById('testNotificationBtn');
         if (testNotificationBtn) {
             testNotificationBtn.addEventListener('click', async () => {
-                if (Notification.permission !== 'granted') {
-                    const granted = await this.notificationManager.requestPermission();
-                    if (!granted) {
-                        alert('لطفاً ابتدا دسترسی به نوتیفیکیشن را فعال کنید.');
-                        return;
-                    }
-                }
+                await this.testNotification(true);
+            });
+        }
 
-                // ایجاد یک پروفایل تست موقت
-                const testProfile = {
-                    id: 'test',
-                    name: 'تست',
-                    weight: 4,
-                    age: 24,
-                    activity: 'medium',
-                    foodType: 'dry',
-                    mealTimes: new Date().toTimeString().slice(0, 5)
-                };
-                const testRecommendation = this.calculator.getRecommendation(testProfile);
-                await this.notificationManager.showNotification(testProfile, testRecommendation, 0);
+        // دکمه تست نوتیفیکیشن با تأخیر
+        const testNotification5sBtn = document.getElementById('testNotification5sBtn');
+        if (testNotification5sBtn) {
+            testNotification5sBtn.addEventListener('click', async () => {
+                this.updateNotificationStatus('⏳ نوتیفیکیشن در 5 ثانیه دیگر ارسال می‌شود...');
+                setTimeout(async () => {
+                    await this.testNotification(false);
+                }, 5000);
             });
         }
     }
@@ -937,12 +948,64 @@ class App {
         }
     }
 
+    async testNotification(immediate = true) {
+        console.log('🧪 Testing notification...', { immediate });
+        
+        // بررسی Service Worker
+        if ('serviceWorker' in navigator) {
+            try {
+                const registration = await navigator.serviceWorker.ready;
+                console.log('✅ Service Worker ready:', registration.scope);
+            } catch (error) {
+                console.warn('⚠️ Service Worker not ready:', error);
+            }
+        } else {
+            console.warn('⚠️ Service Worker not supported');
+        }
+
+        // بررسی Permission
+        if (Notification.permission !== 'granted') {
+            console.log('📱 Requesting notification permission...');
+            const granted = await this.notificationManager.requestPermission();
+            if (!granted) {
+                alert('لطفاً ابتدا دسترسی به نوتیفیکیشن را فعال کنید.\n\nدر Chrome/Edge: Settings > Privacy > Site Settings > Notifications');
+                return;
+            }
+        }
+
+        console.log('✅ Permission:', Notification.permission);
+
+        // ایجاد یک پروفایل تست موقت
+        const testProfile = {
+            id: 'test',
+            name: 'تست',
+            weight: 4,
+            age: 24,
+            activity: 'medium',
+            foodType: 'dry',
+            mealTimes: new Date().toTimeString().slice(0, 5)
+        };
+        const testRecommendation = this.calculator.getRecommendation(testProfile);
+        
+        try {
+            await this.notificationManager.showNotification(testProfile, testRecommendation, 0);
+            console.log('✅ Notification sent successfully');
+            this.updateNotificationStatus('✅ نوتیفیکیشن تست ارسال شد!');
+        } catch (error) {
+            console.error('❌ Error showing notification:', error);
+            this.updateNotificationStatus('❌ خطا: ' + error.message);
+            alert('خطا در ارسال نوتیفیکیشن:\n' + error.message + '\n\nلطفاً Console را بررسی کنید (F12)');
+        }
+    }
+
     updateNotificationStatus(message) {
         const statusEl = document.getElementById('notificationStatus');
         if (statusEl) {
             statusEl.textContent = message;
             setTimeout(() => {
-                statusEl.textContent = '';
+                if (statusEl.textContent === message) {
+                    statusEl.textContent = '';
+                }
             }, 5000);
         }
     }
